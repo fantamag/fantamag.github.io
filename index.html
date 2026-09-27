@@ -54,17 +54,21 @@ h1.logo{
 .sottotestata{font-size:14px;color:var(--tenue);letter-spacing:.06em;text-transform:uppercase}
 
 /* ---------- navigazione ---------- */
-nav{position:sticky;top:0;z-index:20;background:var(--sfondo);
-  border-bottom:2px solid var(--bordo);margin-bottom:18px}
-.tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;padding:8px 0}
+nav{position:sticky;top:0;z-index:20;background:var(--sfondo);margin-bottom:18px}
+.tabs{display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;padding:12px 0 10px}
 .tabs::-webkit-scrollbar{display:none}
 .tab{
-  flex:0 0 auto;border:none;background:transparent;color:var(--tenue);
-  font-family:inherit;font-size:16px;font-weight:600;letter-spacing:.06em;
-  text-transform:uppercase;padding:7px 12px;border-radius:999px;cursor:pointer;
-  white-space:nowrap;
+  flex:0 0 auto;border:2px solid var(--testo);background:var(--scheda);color:var(--testo);
+  font-family:inherit;font-size:18px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;padding:9px 20px;border-radius:999px;cursor:pointer;
+  white-space:nowrap;line-height:1.1;
 }
-.tab[aria-selected="true"]{background:var(--magenta);color:#fff}
+.tab[aria-selected="true"]{background:var(--magenta);border-color:var(--magenta);color:#fff}
+.scorri{height:4px;background:var(--bordo);border-radius:2px;overflow:hidden}
+.scorri span{
+  display:block;height:100%;background:var(--magenta);border-radius:2px;
+  width:var(--largo,40%);transform:translateX(var(--sposta,0));
+}
 
 /* ---------- blocchi ---------- */
 section[hidden]{display:none}
@@ -191,6 +195,7 @@ footer .bottone{margin-top:10px}
     <button class="tab" role="tab" data-sez="squadre">Squadre</button>
     <button class="tab" role="tab" data-sez="mercato">Mercato</button>
   </div>
+  <div class="scorri"><span id="scorri-barra"></span></div>
 </nav>
 
 <main>
@@ -613,10 +618,31 @@ function mostraSezione(nome, scrollSu){
     if (s === nome){ el.innerHTML = RENDER[s](); el.hidden = false; }
     else { el.hidden = true; }
   });
-  document.querySelectorAll(".tab").forEach(t =>
-    t.setAttribute("aria-selected", t.dataset.sez === nome ? "true" : "false"));
+  let attiva = null;
+  document.querySelectorAll(".tab").forEach(t => {
+    const sel = t.dataset.sez === nome;
+    t.setAttribute("aria-selected", sel ? "true" : "false");
+    if (sel) attiva = t;
+  });
+  if (attiva) attiva.scrollIntoView({block:"nearest", inline:"nearest"});
+  aggiornaBarra();
   if (scrollSu) window.scrollTo(0, 0);
 }
+
+/* barra di scorrimento sotto le voci del menu */
+function aggiornaBarra(){
+  const t = document.querySelector(".tabs"), b = $("#scorri-barra");
+  if (!t || !b) return;
+  const quota = t.clientWidth / t.scrollWidth;
+  if (quota >= 1){ b.style.setProperty("--largo", "100%"); b.style.setProperty("--sposta", "0px"); return; }
+  const largo = t.clientWidth * quota;
+  const corsa = t.clientWidth - largo;
+  const avanti = t.scrollWidth - t.clientWidth;
+  b.style.setProperty("--largo", largo.toFixed(1) + "px");
+  b.style.setProperty("--sposta", (corsa * (t.scrollLeft / avanti)).toFixed(1) + "px");
+}
+document.querySelector(".tabs").addEventListener("scroll", aggiornaBarra, {passive:true});
+window.addEventListener("resize", aggiornaBarra);
 
 function apriNumero(n, scrollSu){
   const u = LEGA.uscite.find(x => String(x.num) === String(n));
