@@ -174,6 +174,18 @@ ol.attesa li{margin-bottom:5px;font-size:15px}
 
 footer{border-top:2px solid var(--bordo);margin-top:28px;padding-top:16px;text-align:center;color:var(--tenue);font-size:14px}
 footer .bottone{margin-top:10px}
+
+.credito {
+  margin-top: 24px;
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: left;
+  opacity: .55;
+}
+.credito a { color: inherit; text-decoration: none; }
+.credito a:hover { text-decoration: underline; }
+html[data-tema="scuro"] .credito { opacity: .7; }
+#lettore .credito{color:var(--tenue);margin-bottom:24px}
 </style>
 </head>
 <body>
@@ -210,6 +222,7 @@ footer .bottone{margin-top:10px}
 <footer>
   <div>La Gazzetta del FantaMag &middot; stagione 2026 / 2027</div>
   <button class="bottone chiaro" id="tema">Tema scuro</button>
+  <p class="credito">Sito realizzato e curato da <a href="https://prosperialfonso.com" rel="author">Alfonso Prosperi</a></p>
 </footer>
 
 </div>
@@ -221,6 +234,7 @@ footer .bottone{margin-top:10px}
   </div>
   <div class="wrap"><div class="articolo" id="lettore-corpo"></div>
     <button class="bottone chiaro" id="indietro">Torna indietro</button>
+    <p class="credito">Sito realizzato e curato da <a href="https://prosperialfonso.com" rel="author">Alfonso Prosperi</a></p>
   </div>
 </div>
 
