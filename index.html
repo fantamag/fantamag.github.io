@@ -186,6 +186,7 @@ footer .bottone{margin-top:10px}
 .credito a:hover { text-decoration: underline; }
 html[data-tema="scuro"] .credito { opacity: .7; }
 #lettore .credito{color:var(--tenue);margin-bottom:24px}
+body.lettura footer .credito{display:none}
 </style>
 </head>
 <body>
@@ -669,6 +670,7 @@ function apriNumero(n, scrollSu){
      ${formatta(u.testo)}`;
   $("#lettore").hidden = false;
   document.body.style.overflow = "hidden";
+  document.body.classList.add("lettura");
   if (scrollSu) $("#lettore").scrollTop = 0;
   return true;
 }
@@ -676,6 +678,7 @@ function apriNumero(n, scrollSu){
 function chiudiNumero(){
   $("#lettore").hidden = true;
   document.body.style.overflow = "";
+  document.body.classList.remove("lettura");
 }
 
 function applica(){
