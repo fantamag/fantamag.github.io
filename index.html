@@ -195,6 +195,23 @@ h2.sotto{font-size:18px;margin:22px 0 10px;font-weight:600}
 .card-sq > span:last-child{min-width:0}
 .barra-col{width:5px;align-self:stretch;border-radius:3px;flex:0 0 auto}
 
+/* ---------- statistiche ---------- */
+h2.stat{font-size:20px;margin:24px 0 10px;font-weight:700;text-transform:uppercase;letter-spacing:.02em}
+.spiega{margin:0 0 10px;color:var(--tenue);font-size:15px;line-height:1.4}
+.vuoto.piccolo{padding:14px;font-size:15px}
+td img.lg{width:20px;height:20px;vertical-align:-5px;margin-right:6px}
+td:has(> img.lg){white-space:nowrap}
+.sotto-sq{color:var(--tenue);font-size:14px}
+b.idx{color:var(--magenta)}
+.pres-testa{display:flex;gap:10px;align-items:center}
+.pres-testa img{width:44px;height:44px;flex:none}
+.pres-testa .mini{display:block;line-height:1.3;margin-top:2px}
+.pres-nome{font-size:19px;display:block}
+.pres-form{margin-top:10px}
+.pres-form .rep{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--magenta);font-weight:700;margin:10px 0 2px}
+.pres-form .gg{display:flex;justify-content:space-between;gap:10px;padding:3px 0;border-bottom:1px solid var(--bordo);font-size:16px}
+.pres-form .gg:last-child{border-bottom:0}
+
 /* ---------- statistiche in attesa ---------- */
 ol.attesa{margin:0;padding-left:22px;color:var(--tenue)}
 ol.attesa li{margin-bottom:5px;font-size:15px}
@@ -337,10 +354,14 @@ const LEGA = {
   /* giornate: { n, serieA, data, partite:[{c,t,gc,gt,pc,pt}] } */
   giornate: [],
 
-  /* fantavoti dei SOLI titolari, per l'MVP di giornata: { g: giocatore, s: id squadra, v: fantavoto, n: giornata } */
+  /* formazioni: fonte unica per MVP e statistiche, una per squadra e giornata.
+     { n: giornata, s: id squadra, modulo: "3-4-3",
+       titolari: [{ r:"P"|"D"|"C"|"A", g: giocatore, v: fantavoto o null se senza voto }],
+       panchina: [{ r, g, v, entrato: true se è subentrato d'ufficio ed è entrato nel punteggio }] } */
+  formazioni: [],
+
+  /* solo come riserva se mancano le formazioni complete: { g, s, v, n } */
   fantavoti: [],
-  panchine: [],
-  rendimento: [],
 
   uscite: [
     {
@@ -468,10 +489,6 @@ function tuttePartite(){
 /* soglie gol: primo gol a 66, poi una fascia ogni 4 */
 const SOGLIA = 66, FASCIA = 4;
 function golDa(p){ return p < SOGLIA ? 0 : Math.floor((p - SOGLIA) / FASCIA) + 1; }
-function mancante(p){
-  const prossima = p < SOGLIA ? SOGLIA : SOGLIA + FASCIA * golDa(p);
-  return Math.round((prossima - p) * 100) / 100;
-}
 
 /* ============================================================
    RENDER DELLE SEZIONI
@@ -560,9 +577,27 @@ function uscitaGiornata(n){
   return post[n-1] || null;
 }
 
+/* fantavoti dei soli titolari con voto, presi dalle formazioni (più l'eventuale riserva manuale) */
+function votiTitolari(){
+  const l = [];
+  LEGA.formazioni.forEach(f => f.titolari.forEach(x => {
+    if (x.v !== null && x.v !== undefined) l.push({g:x.g, s:f.s, v:x.v, n:f.n, r:x.r});
+  }));
+  return l.concat(LEGA.fantavoti);
+}
+
+/* panchinari con voto che NON sono entrati nel punteggio */
+function votiPanchina(){
+  const l = [];
+  LEGA.formazioni.forEach(f => (f.panchina || []).forEach(x => {
+    if (x.v !== null && x.v !== undefined && !x.entrato) l.push({g:x.g, s:f.s, v:x.v, n:f.n, r:x.r});
+  }));
+  return l;
+}
+
 /* MVP: fantavoto più alto tra i soli titolari; in caso di parità tutti */
 function mvpGiornata(n){
-  const l = LEGA.fantavoti.filter(x => x.n === n);
+  const l = votiTitolari().filter(x => x.n === n);
   if (!l.length) return "";
   const max = Math.max(...l.map(x => x.v));
   return l.filter(x => x.v === max).map(x =>
@@ -605,17 +640,51 @@ function renderRisultati(g){
 }
 
 const ELENCO_STAT = [
-  "I record: punteggio più alto e più basso",
+  "I record",
   "I fantavoti più alti",
   "Le panchine d'oro",
   "Gli acquisti più cari dell'asta",
   "Gli affari dell'asta",
   "Gli acquisti da rivedere",
-  "Il miglior presidente",
-  "Il miglior fantallenatore",
-  "Per un soffio: quanto è mancato al gol successivo",
-  "Il termometro delle soglie"
+  "La formazione record",
+  "Il miglior fantallenatore"
 ];
+const SOGLIA_DA_RIVEDERE = 80;   /* crediti: su 1.000 a squadra */
+
+function prestazioni(){
+  const r = [];
+  LEGA.giornate.forEach(g => (g.partite || []).forEach(p => {
+    r.push({s:p.c, punti:p.pc, gf:p.gc, gs:p.gt, avv:p.t, n:g.n});
+    r.push({s:p.t, punti:p.pt, gf:p.gt, gs:p.gc, avv:p.c, n:g.n});
+  }));
+  return r;
+}
+
+function slotModulo(modulo){
+  const [d,c,a] = String(modulo).split("-").map(Number);
+  return {P:1, D:d||0, C:c||0, A:a||0};
+}
+
+/* migliore undici possibile con lo stesso modulo, tra titolari e panchinari con voto */
+function miglioreUndici(f){
+  const slot = slotModulo(f.modulo);
+  const tutti = f.titolari.concat(f.panchina || []).filter(x => x.v !== null && x.v !== undefined);
+  let somma = 0;
+  ["P","D","C","A"].forEach(r => {
+    tutti.filter(x => x.r === r).map(x => x.v).sort((a,b) => b - a)
+      .slice(0, slot[r]).forEach(v => somma += v);
+  });
+  return Math.round(somma * 10) / 10;
+}
+
+function rigaGiocatore(x, conGiornata){
+  return `<tr><td>${esc(x.g)}</td>
+    <td><img src="${logo(x.s)}" alt="" class="lg">${esc(sq(x.s).breve)}</td>
+    <td class="num"><b>${num(x.v)}</b></td>${conGiornata ? `<td class="num">${x.n}ª</td>` : ""}</tr>`;
+}
+
+function spiega(t){ return `<p class="spiega">${esc(t)}</p>`; }
+function attesa(t){ return `<div class="vuoto piccolo">${esc(t)}</div>`; }
 
 function renderStatistiche(){
   let h = `<div class="titolo-sez">Statistiche</div>`;
@@ -626,25 +695,127 @@ function renderStatistiche(){
       <ol class="attesa">${ELENCO_STAT.map(x => `<li>${esc(x)}</li>`).join("")}</ol></div>`;
     return h;
   }
-  const tutte = tuttePartite();
-  const punteggi = [];
-  tutte.forEach(({g,m}) => {
-    punteggi.push({id:m.c, p:m.pc, g:g.n});
-    punteggi.push({id:m.t, p:m.pt, g:g.n});
-  });
-  punteggi.sort((a,b) => b.p - a.p);
-  const alto = punteggi[0], basso = punteggi[punteggi.length - 1];
-  h += `<div class="scheda"><div class="titolo-sez" style="margin-top:0">I record</div>
-    <p style="margin:0">Punteggio più alto: <strong>${esc(sq(alto.id).breve)}</strong>, ${num(alto.p.toFixed(1))} alla ${alto.g}ª.<br>
-    Punteggio più basso: <strong>${esc(sq(basso.id).breve)}</strong>, ${num(basso.p.toFixed(1))} alla ${basso.g}ª.</p></div>`;
 
-  const soffio = punteggi.map(x => ({...x, manca: mancante(x.p)}))
-    .sort((a,b) => a.manca - b.manca).slice(0, 5);
-  h += `<div class="scheda"><div class="titolo-sez" style="margin-top:0">Per un soffio</div>
-    <table><tbody>${soffio.map(x => `<tr><td>${esc(sq(x.id).breve)} <span class="mini">(${x.g}ª)</span></td>
-    <td class="num">${num(x.p.toFixed(1))}</td><td class="num">mancava ${num(x.manca.toFixed(1))}</td></tr>`).join("")}
-    </tbody></table></div>`;
+  const pr = prestazioni().slice().sort((a,b) => b.punti - a.punti);
+  const haForm = LEGA.formazioni.length > 0;
+  const haRose = LEGA.squadre.some(s => s.rosa.length);
+  const thead = cols => `<thead><tr>${cols.map(c => `<th${c[1] ? ' class="num"' : ''}>${c[0]}</th>`).join("")}</tr></thead>`;
+
+  /* 1. I record */
+  const alto = pr[0], basso = pr[pr.length - 1];
+  h += `<h2 class="stat">I record</h2><div class="scheda">
+    <p style="margin:0 0 10px"><b>Punteggio più alto</b><br>${esc(sq(alto.s).nome)} · ${num(alto.punti)} punti (${alto.n}ª giornata)</p>
+    <p style="margin:0"><b>Punteggio più basso</b><br>${esc(sq(basso.s).nome)} · ${num(basso.punti)} punti (${basso.n}ª giornata)</p></div>`;
+
+  /* 2. I fantavoti più alti */
+  const fv = votiTitolari().sort((a,b) => b.v - a.v).slice(0, 10);
+  h += `<h2 class="stat">I fantavoti più alti</h2>`;
+  h += fv.length ? `<table>${thead([["Giocatore"],["Squadra"],["Voto",1],["Giornata",1]])}
+    <tbody>${fv.map(x => rigaGiocatore(x, true)).join("")}</tbody></table>`
+    : attesa("Servono i tabellini con i fantavoti dei titolari.");
+
+  /* 3. Le panchine d'oro */
+  const pa = votiPanchina().sort((a,b) => b.v - a.v).slice(0, 8);
+  h += `<h2 class="stat">Le panchine d'oro</h2>`;
+  h += pa.length ? `<table>${thead([["Giocatore"],["Squadra"],["Voto",1],["Giornata",1]])}
+    <tbody>${pa.map(x => rigaGiocatore(x, true)).join("")}</tbody></table>`
+    : attesa(haForm ? "Finora nessun voto rimasto in panchina." : "Servono i tabellini con i voti dei panchinari.");
+
+  /* 4. Gli acquisti più cari */
+  const cari = [];
+  LEGA.squadre.forEach(s => s.rosa.forEach(x => cari.push({g:x.g, c:x.c, s:s.id, r:x.r})));
+  cari.sort((a,b) => b.c - a.c);
+  h += `<h2 class="stat">Gli acquisti più cari dell'asta</h2>`;
+  h += haRose ? `<table>${thead([["Giocatore"],["Squadra"],["Crediti",1]])}
+    <tbody>${cari.slice(0, 10).map(x => `<tr><td>${esc(x.g)}</td>
+      <td><img src="${logo(x.s)}" alt="" class="lg">${esc(sq(x.s).breve)}</td>
+      <td class="num"><b>${x.c}</b></td></tr>`).join("")}</tbody></table>`
+    : attesa("Compaiono dopo l'asta, con le rose e i prezzi pagati.");
+
+  /* 5 e 6. Affari e acquisti da rivedere */
+  const voti = votiTitolari();
+  const rend = cari.map(x => {
+    const v = voti.filter(y => y.s === x.s && y.g === x.g).map(y => y.v);
+    const med = v.length ? v.reduce((a,b) => a + b, 0) / v.length : 0;
+    return {...x, med: Math.round(med * 100) / 100, idx: med ? Math.round(x.c / med * 10) / 10 : null};
+  });
+  const rigaIdx = x => `<tr><td>${esc(x.g)}<br><span class="sotto-sq"><img src="${logo(x.s)}" alt="" class="lg">${esc(sq(x.s).breve)}</span></td>
+    <td class="num">${x.c}</td><td class="num">${x.idx === null ? "mai in campo" : num(x.med.toFixed(2))}</td>
+    <td class="num"><b class="idx">${x.idx === null ? "-" : num(x.idx.toFixed(1))}</b></td></tr>`;
+  const headIdx = thead([["Giocatore"],["Crediti",1],["Media",1],["Indice",1]]);
+
+  const affari = rend.filter(x => x.idx !== null).sort((a,b) => a.idx - b.idx).slice(0, 8);
+  h += `<h2 class="stat">Gli affari dell'asta</h2>` +
+    spiega("Chi rende di più rispetto a quanto è costato: crediti spesi per ogni punto di fantavoto medio. Più il numero è basso, più l'acquisto è stato azzeccato.");
+  h += affari.length ? `<table>${headIdx}<tbody>${affari.map(rigaIdx).join("")}</tbody></table>`
+    : attesa(haRose ? "Servono i fantavoti dei titolari per calcolare l'indice." : "Compaiono dopo l'asta e la prima giornata.");
+
+  const rivedere = rend.filter(x => x.c >= SOGLIA_DA_RIVEDERE)
+    .sort((a,b) => (b.idx === null ? 1e9 : b.idx) - (a.idx === null ? 1e9 : a.idx)).slice(0, 6);
+  h += `<h2 class="stat">Gli acquisti da rivedere</h2>`;
+  h += rivedere.length ? `<table>${headIdx}<tbody>${rivedere.map(rigaIdx).join("")}</tbody></table>`
+    : attesa(haRose ? `Nessun giocatore pagato ${SOGLIA_DA_RIVEDERE} crediti o più.` : "Compaiono dopo l'asta e la prima giornata.");
+
+  /* 7. La formazione record */
+  h += `<h2 class="stat">La formazione record</h2>` + formazioneRecord(pr);
+
+  /* 8. Il miglior fantallenatore */
+  h += `<h2 class="stat">Il miglior fantallenatore</h2>` +
+    spiega("Chi ha lasciato meno punti in panchina: per ogni giornata si confronta la formazione schierata con l'undici migliore possibile, ruolo per ruolo. Più il numero è basso, meglio ha scelto.");
+  if (haForm){
+    const persi = {};
+    LEGA.squadre.forEach(s => persi[s.id] = 0);
+    LEGA.formazioni.forEach(f => {
+      const fatto = pr.find(x => x.s === f.s && x.n === f.n);
+      if (!fatto) return;
+      persi[f.s] += Math.max(0, miglioreUndici(f) - fatto.punti);
+    });
+    const ord = Object.entries(persi).sort((a,b) => a[1] - b[1]);
+    h += `<table>${thead([["#",1],["Squadra"],["Punti lasciati",1]])}<tbody>${ord.map(([k,v],i) =>
+      `<tr${i ? "" : ' class="primo"'}><td class="num">${i+1}</td>
+       <td><img src="${logo(k)}" alt="" class="lg">${esc(sq(k).nome)}</td>
+       <td class="num"><b>${num((Math.round(v * 10) / 10).toFixed(1))}</b></td></tr>`).join("")}</tbody></table>`;
+  } else {
+    h += attesa("Servono i tabellini completi: titolari, panchinari e modulo di ogni squadra.");
+  }
   return h;
+}
+
+function formazioneRecord(pr){
+  const top = pr[0];
+  const f = LEGA.formazioni.find(x => x.s === top.s && x.n === top.n);
+  if (!f) return attesa("Servono i tabellini completi della formazione con il punteggio più alto.");
+  const s = sq(top.s);
+  const ris = top.gf > top.gs ? "vittoria" : top.gf < top.gs ? "sconfitta" : "pareggio";
+  const rep = {P:"Portiere", D:"Difesa", C:"Centrocampo", A:"Attacco"};
+  const voto = v => v === null || v === undefined ? "sv" : num(v);
+  let corpo = "";
+  ["P","D","C","A"].forEach(r => {
+    const gio = f.titolari.filter(x => x.r === r);
+    if (!gio.length) return;
+    corpo += `<div class="rep">${rep[r]}</div>` + gio.map(x =>
+      `<div class="gg"><span>${esc(x.g)}</span><b>${voto(x.v)}</b></div>`).join("");
+  });
+  const panca = f.panchina || [];
+  corpo += `<div class="rep">In panchina</div>` + (panca.length ? panca.map(x =>
+    `<div class="gg"><span>${esc(x.g)}${x.entrato ? " <span class='mini'>(entrato)</span>" : ""}</span><span>${voto(x.v)}</span></div>`).join("")
+    : `<div class="gg"><span class="mini">nessuno</span><span></span></div>`);
+
+  /* curiosità calcolata sulla formazione */
+  const conVoto = f.titolari.filter(x => x.v !== null && x.v !== undefined);
+  const best = conVoto.slice().sort((a,b) => b.v - a.v)[0];
+  const sopra7 = conVoto.filter(x => x.v >= 7).length;
+  const pBest = panca.filter(x => x.v !== null && x.v !== undefined && !x.entrato).sort((a,b) => b.v - a.v)[0];
+  let cur = best ? `Curiosità: il trascinatore è stato ${best.g} con ${num(best.v)}, e ${sopra7} titolari su ${f.titolari.length} hanno chiuso dal 7 in su` : "";
+  if (cur && pBest && pBest.v >= 7) cur += `; in panchina era rimasto anche ${pBest.g} con ${num(pBest.v)}`;
+  cur += cur ? "." : "";
+
+  return `<div class="scheda presidente" style="border-left:8px solid ${s.colore}">
+    <div class="pres-testa"><img src="${logo(s.id)}" alt="">
+      <span><b class="pres-nome">${esc(s.nome)} · ${num(top.punti)} punti</b>
+      <span class="mini">${top.n}ª giornata · ${ris} ${top.gf} - ${top.gs} contro ${esc(sq(top.avv).nome)} · modulo ${esc(f.modulo)}</span></span></div>
+    <div class="pres-form">${corpo}</div>
+    ${cur ? `<p class="mini" style="margin:10px 0 0">${esc(cur)}</p>` : ""}</div>`;
 }
 
 function renderSquadre(){
