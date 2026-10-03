@@ -660,21 +660,26 @@ function prestazioni(){
   return r;
 }
 
-function slotModulo(modulo){
-  const [d,c,a] = String(modulo).split("-").map(Number);
-  return {P:1, D:d||0, C:c||0, A:a||0};
-}
-
-/* migliore undici possibile con lo stesso modulo, tra titolari e panchinari con voto */
-function miglioreUndici(f){
-  const slot = slotModulo(f.modulo);
-  const tutti = f.titolari.concat(f.panchina || []).filter(x => x.v !== null && x.v !== undefined);
-  let somma = 0;
+/* punti lasciati in panchina in una giornata, ruolo per ruolo con il modulo schierato:
+   in campo  = titolari con voto + panchinari subentrati d'ufficio (hanno giocato e contato)
+   panchina  = panchinari con voto rimasti fuori
+   il titolare peggiore contro il panchinaro migliore, poi il secondo contro il secondo,
+   e ci si ferma appena il panchinaro non supera più il titolare */
+function puntiLasciati(f){
+  const conVoto = x => x.v !== null && x.v !== undefined;
+  let tot = 0;
   ["P","D","C","A"].forEach(r => {
-    tutti.filter(x => x.r === r).map(x => x.v).sort((a,b) => b - a)
-      .slice(0, slot[r]).forEach(v => somma += v);
+    const campo = f.titolari.filter(x => x.r === r && conVoto(x))
+      .concat((f.panchina || []).filter(x => x.r === r && conVoto(x) && x.entrato))
+      .map(x => x.v).sort((a,b) => a - b);
+    const panca = (f.panchina || []).filter(x => x.r === r && conVoto(x) && !x.entrato)
+      .map(x => x.v).sort((a,b) => b - a);
+    for (let k = 0; k < Math.min(campo.length, panca.length); k++){
+      if (panca[k] > campo[k]) tot += panca[k] - campo[k];
+      else break;
+    }
   });
-  return Math.round(somma * 10) / 10;
+  return Math.round(tot * 10) / 10;
 }
 
 function rigaGiocatore(x, conGiornata){
@@ -761,14 +766,14 @@ function renderStatistiche(){
 
   /* 8. Il miglior fantallenatore */
   h += `<h2 class="stat">Il miglior fantallenatore</h2>` +
-    spiega("Chi ha lasciato meno punti in panchina: per ogni giornata si confronta la formazione schierata con l'undici migliore possibile, ruolo per ruolo. Più il numero è basso, meglio ha scelto.");
+    spiega("Ruolo per ruolo, con il modulo schierato: ogni volta che un panchinaro ha preso più di un titolare dello stesso ruolo, la differenza conta come punti lasciati in panchina. Più il numero è basso, meglio ha scelto.");
   if (haForm){
     const persi = {};
     LEGA.squadre.forEach(s => persi[s.id] = 0);
+    const giocate = new Set(LEGA.giornate.map(g => g.n));
     LEGA.formazioni.forEach(f => {
-      const fatto = pr.find(x => x.s === f.s && x.n === f.n);
-      if (!fatto) return;
-      persi[f.s] += Math.max(0, miglioreUndici(f) - fatto.punti);
+      if (!giocate.has(f.n) || !(f.s in persi)) return;
+      persi[f.s] += puntiLasciati(f);
     });
     const ord = Object.entries(persi).sort((a,b) => a[1] - b[1]);
     h += `<table>${thead([["#",1],["Squadra"],["Punti lasciati",1]])}<tbody>${ord.map(([k,v],i) =>
